@@ -29,14 +29,14 @@ func main() {
 		// read the directory and send all files to the channel
 		go readDirectory(*directory, files, &wg)
 
-		// go listFiles(files)
-		fmt.Println("")
+		fmt.Println()
 		counter := 0
 		wg.Add(1)
+		// recieve from files and add to slice
 		go readFiles(files, &allFilesWithoutDuplicates, &counter, &wg)
-		// go readFiles(files, finals, &counter)
 
 		wg.Wait()
+		// is this okay, or should it be closed after the last directory was read?
 		close(files)
 
 		fmt.Println()
@@ -108,6 +108,8 @@ func readFiles(files <-chan string, allFilesWithoutDuplicates *[]string, counter
 				}
 			}
 		case <-time.NewTimer(time.Nanosecond * 1).C:
+			// is this really a proper way to do this?
+			// at least it seems to work...
 			fmt.Println("ending")
 			wg.Done()
 		}
