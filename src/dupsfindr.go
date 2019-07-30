@@ -22,7 +22,7 @@ func main() {
 	if len(*directory) > 0 {
 		files := make(chan string, 10)
 
-		finals := make([]string, 0, 5)
+		allFilesWithoutDuplicates := make([]string, 0, 5)
 
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -32,17 +32,18 @@ func main() {
 		// go listFiles(files)
 		fmt.Println("")
 		counter := 0
-		go readFiles(files, finals, &counter)
+		go readFiles(files, &allFilesWithoutDuplicates, &counter)
 		// go readFiles(files, finals, &counter)
 
 		wg.Wait()
-		fmt.Println("waiting ended")
-		close(files)
+		// close(files)
 
-		// fmt.Println(len(finals), " - ", cap(finals))
-		// time.Sleep(time.Second * 10)
+		fmt.Println()
+		fmt.Println()
+		fmt.Println(allFilesWithoutDuplicates)
 	}
-
+	fmt.Println()
+	fmt.Println()
 	fmt.Println("Executed in: ", time.Since(start))
 }
 
@@ -81,7 +82,7 @@ func readDirectory(directory string, files chan<- string, wg *sync.WaitGroup) {
 	wg.Done()
 }
 
-func readFiles(files <-chan string, finals []string, counter *int) {
+func readFiles(files <-chan string, allFilesWithoutDuplicates *[]string, counter *int) {
 	for {
 		filepath, hasMore := <-files
 		if hasMore {
@@ -98,7 +99,7 @@ func readFiles(files <-chan string, finals []string, counter *int) {
 			}
 			sha := base64.URLEncoding.EncodeToString(hash.Sum(nil))
 			fmt.Printf(" - %s\n", sha)
-			finals = append(finals, sha)
+			*allFilesWithoutDuplicates = append(*allFilesWithoutDuplicates, sha)
 			// fmt.Println(finals)
 		} else {
 			return
