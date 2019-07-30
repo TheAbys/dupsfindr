@@ -32,11 +32,12 @@ func main() {
 		// go listFiles(files)
 		fmt.Println("")
 		counter := 0
-		go readFiles(files, &allFilesWithoutDuplicates, &counter)
+		wg.Add(1)
+		go readFiles(files, &allFilesWithoutDuplicates, &counter, &wg)
 		// go readFiles(files, finals, &counter)
 
 		wg.Wait()
-		// close(files)
+		close(files)
 
 		fmt.Println()
 		fmt.Println()
@@ -48,6 +49,7 @@ func main() {
 }
 
 func readDirectory(directory string, files chan<- string, wg *sync.WaitGroup) {
+	defer wg.Done()
 	// fmt.Println("Directory:", directory)
 	f, err := os.Open(directory)
 	defer f.Close()
@@ -79,36 +81,44 @@ func readDirectory(directory string, files chan<- string, wg *sync.WaitGroup) {
 			}
 		}
 	}
-	wg.Done()
 }
 
-func readFiles(files <-chan string, allFilesWithoutDuplicates *[]string, counter *int) {
+func readFiles(files <-chan string, allFilesWithoutDuplicates *[]string, counter *int, wg *sync.WaitGroup) {
 	for {
-		filepath, hasMore := <-files
-		if hasMore {
-			*counter++
-			fmt.Printf("%d Reading: %s", *counter, filepath)
-			file, err := os.Open(filepath)
-			if err != nil {
-				fmt.Println(err)
-			}
+		select {
+		case filepath := <-files:
+			// it seems like this gets executed one time to often and that time filepath is empty
+			// why?
+			if len(filepath) > 0 {
+				*counter++
+				fmt.Printf("%d Reading: [%s]", *counter, filepath)
+				file, err := os.Open(filepath)
+				if err != nil {
+					fmt.Println(err)
+				}
 
-			hash := sha256.New()
-			if _, err := io.Copy(hash, file); err != nil {
-				fmt.Println(err)
+				hash := sha256.New()
+				if _, err := io.Copy(hash, file); err != nil {
+					fmt.Println(err)
+				}
+				sha := base64.URLEncoding.EncodeToString(hash.Sum(nil))
+				fmt.Printf(" - %s\n", sha)
+				if !contains(*allFilesWithoutDuplicates, sha) {
+					*allFilesWithoutDuplicates = append(*allFilesWithoutDuplicates, sha)
+				}
 			}
-			sha := base64.URLEncoding.EncodeToString(hash.Sum(nil))
-			fmt.Printf(" - %s\n", sha)
-			*allFilesWithoutDuplicates = append(*allFilesWithoutDuplicates, sha)
-			// fmt.Println(finals)
-		} else {
-			return
+		case <-time.NewTimer(time.Nanosecond * 1).C:
+			fmt.Println("ending")
+			wg.Done()
 		}
 	}
 }
 
-func listFiles(files <-chan string) {
-	for file := range files {
-		fmt.Println("File: ", file)
+func contains(s []string, e string) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
 	}
+	return false
 }
