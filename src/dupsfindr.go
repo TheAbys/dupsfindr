@@ -49,7 +49,8 @@ func readDirectory(directory string, files chan<- string, wg *sync.WaitGroup) {
 
 	f, err := os.Open(directory)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
+		return
 	}
 
 	defer f.Close()
@@ -57,6 +58,7 @@ func readDirectory(directory string, files chan<- string, wg *sync.WaitGroup) {
 	info, err := f.Stat()
 	if err != nil {
 		log.Println(err)
+		return
 	}
 
 	if info.IsDir() {
