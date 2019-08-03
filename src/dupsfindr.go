@@ -37,8 +37,7 @@ func main() {
 
 	wg.Wait()
 	// is this okay, or should it be closed after the last directory was read?
-	// --> closing a channel should always be done by the sending goroutine
-	// close(files)
+	close(files)
 
 	fmt.Printf("\n\n%v", filesWithoutDuplicates)
 	fmt.Printf("\n\nExecuted in: %v", time.Since(start))
