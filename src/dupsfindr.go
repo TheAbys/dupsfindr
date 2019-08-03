@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -17,97 +18,97 @@ func main() {
 	directory := flag.String("directory", "", "the absolute directorypath to search for duplicates")
 	flag.Parse()
 
+	if len(*directory) == 0 {
+		panic("no directory provided")
+	}
+
 	fmt.Println("DupsFindr started with: ", *directory)
 
-	if len(*directory) > 0 {
-		files := make(chan string, 10)
+	files := make(chan string, 10)
+	filesWithoutDuplicates := make([]string, 0, 5)
 
-		allFilesWithoutDuplicates := make([]string, 0, 5)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	// read the directory and send all files to the channel
+	go readDirectory(*directory, files, &wg)
 
-		var wg sync.WaitGroup
-		wg.Add(1)
-		// read the directory and send all files to the channel
-		go readDirectory(*directory, files, &wg)
+	counter := 0
+	// recieve from files and add to slice
+	go readFiles(files, &filesWithoutDuplicates, &counter, &wg)
 
-		fmt.Println()
-		counter := 0
-		wg.Add(1)
-		// recieve from files and add to slice
-		go readFiles(files, &allFilesWithoutDuplicates, &counter, &wg)
+	wg.Wait()
+	// is this okay, or should it be closed after the last directory was read?
+	// --> closing a channel should always be done by the sending goroutine
+	// close(files)
 
-		wg.Wait()
-		// is this okay, or should it be closed after the last directory was read?
-		close(files)
-
-		fmt.Println()
-		fmt.Println()
-		fmt.Println(allFilesWithoutDuplicates)
-	}
-	fmt.Println()
-	fmt.Println()
-	fmt.Println("Executed in: ", time.Since(start))
+	fmt.Printf("\n\n%v", filesWithoutDuplicates)
+	fmt.Printf("\n\nExecuted in: %v", time.Since(start))
 }
 
 func readDirectory(directory string, files chan<- string, wg *sync.WaitGroup) {
+	wg.Add(1)
 	defer wg.Done()
-	// fmt.Println("Directory:", directory)
-	f, err := os.Open(directory)
-	defer f.Close()
 
+	f, err := os.Open(directory)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	info, err := f.Stat()
+	defer f.Close()
 
+	info, err := f.Stat()
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 
 	if info.IsDir() {
 		directoryInfos, err := f.Readdir(-1)
 
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 		}
 
 		for _, directoryInfo := range directoryInfos {
+			path := fmt.Sprintf("%s/%s", directory, directoryInfo.Name())
+
 			if directoryInfo.IsDir() {
-				wg.Add(1)
-				go readDirectory(directory+"/"+directoryInfo.Name(), files, wg)
+				go readDirectory(path, files, wg)
 			} else {
 				// sends to channel files, this locks as long as nothing is taken
-				files <- directory + "/" + directoryInfo.Name()
+				files <- path
 			}
 		}
 	}
 }
 
-func readFiles(files <-chan string, allFilesWithoutDuplicates *[]string, counter *int, wg *sync.WaitGroup) {
+func readFiles(files <-chan string, filesWithoutDuplicates *[]string, counter *int, wg *sync.WaitGroup) {
 	for {
 		select {
 		case filepath := <-files:
 			// it seems like this gets executed one time to often and that time filepath is empty
 			// why?
+			// --> because closing a channel always sends a message :)
 			if len(filepath) > 0 {
 				*counter++
-				fmt.Printf("%d Reading: [%s]", *counter, filepath)
+
 				file, err := os.Open(filepath)
 				if err != nil {
-					fmt.Println(err)
+					log.Println(err)
 				}
 
 				hash := sha256.New()
 				if _, err := io.Copy(hash, file); err != nil {
-					fmt.Println(err)
+					log.Println(err)
 				}
 				sha := base64.URLEncoding.EncodeToString(hash.Sum(nil))
-				fmt.Printf(" - %s\n", sha)
-				if !contains(*allFilesWithoutDuplicates, sha) {
-					*allFilesWithoutDuplicates = append(*allFilesWithoutDuplicates, sha)
+
+				fmt.Printf("[%d] Reading: %s -> %s\n", *counter, filepath, sha)
+
+				if !contains(*filesWithoutDuplicates, sha) {
+					*filesWithoutDuplicates = append(*filesWithoutDuplicates, sha)
 				}
 			}
-		case <-time.NewTimer(time.Nanosecond * 1).C:
+		case <-time.NewTimer(time.Second * 10).C:
 			// is this really a proper way to do this?
 			// at least it seems to work...
 			fmt.Println("ending")
