@@ -28,7 +28,6 @@ func main() {
 	filesWithoutDuplicates := make([]string, 0, 5)
 
 	var wg sync.WaitGroup
-	wg.Add(1)
 	// read the directory and send all files to the channel
 	go readDirectory(*directory, files, &wg)
 
